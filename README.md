@@ -66,3 +66,12 @@ When connected using an OpenVPN client, navigate to [http://pi.hole](http://pi.h
 | openvpn\_public\_ip | n/a |
 | pi-hole\_private\_ip | n/a |
 | pi-hole\_public\_ip | n/a |
+
+## Contributing
+
+Everyone is encouraged to help improve this project. Here are a few ways you can help:
+
+- Suggest or add new features
+- Write, clarify, or fix documentation
+- [Report bugs](https://github.com/cristian-rivera/skyhole/issues)
+- Fix bugs and [submit pull requests](https://github.com/cristian-rivera/skyhole/pulls)
