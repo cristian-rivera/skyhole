@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Parse arguments
+while getopts ':n:o:p:s:' opt
+do
+  case "$opt" in
+    n) NAME=$OPTARG ;;
+    o) OPENVPN_PUBLIC_IP=$OPTARG ;;
+    p) PI_HOLE_PRIVATE_IP=$OPTARG ;;
+    s) OPENVPN_VIRTUAL_SUBNET=$OPTARG ;;
+    *) echo "Usage: $0 [-n] [-o] [-p] [-s]" 1>&2
+       exit 1 ;;
+  esac
+done
+
+# Path to EasyRSA
+EASYRSA_PATH='/etc/openvpn/easy-rsa'
+
+# Get default network interface
+DEFAULT_INTERFACE=$(route | grep '^default' | grep -o '[^ ]*$')
+
+# Check if we're running as root
+root_check () {
+  if [[ $EUID -ne 0 ]]; then
+    echo 'This script must be run as root' 1>&2
+    exit 1
+  fi
+}
+
+# Download and install OpenVPN
+install_openvpn () {
+  apt-get update && apt-get install -y openvpn openssl
+}
+
+# Download and install EasyRSA
+install_easyrsa () {
+  wget -P ~/ https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.6/EasyRSA-unix-v3.0.6.tgz
+  tar xzf ~/EasyRSA-unix-v3.0.6.tgz -C ~/
+  mv ~/EasyRSA-v3.0.6 $EASYRSA_PATH
+  chown -R root:root $EASYRSA_PATH
+}
+
+# Export EasyRSA configuration options to file
+set_easyrsa_config_options () {
+  cat /tmp/openvpn/vars > "$EASYRSA_PATH/vars"
+  echo "set_var EASYRSA_REQ_CN $NAME" >> "$EASYRSA_PATH/vars"
+}
+
+root_check
+install_openvpn
+install_easyrsa
+set_easyrsa_config_options
+
+cd $EASYRSA_PATH
+
+./easyrsa init-pki
+
+sed -i 's/^RANDFILE/#RANDFILE/g' "$EASYRSA_PATH/pki/openssl-easyrsa.cnf"
+
+./easyrsa build-ca nopass
+
+./easyrsa build-server-full server nopass
+
+./easyrsa gen-crl
+
+cp pki/ca.crt pki/crl.pem pki/private/ca.key pki/issued/server.crt pki/private/server.key /etc/openvpn
+
+chmod 644 /etc/openvpn/crl.pem
+
+openvpn --genkey --secret /etc/openvpn/ta.key
+
+mv /tmp/openvpn/server.conf /tmp/openvpn/client.conf /etc/openvpn
+
+sed -i "1s/^/server 10.0.2.0 255.255.255.0\n/" /etc/openvpn/server.conf
+
+echo "push \"dhcp-option DNS $PI_HOLE_PRIVATE_IP\"
+
+verb 0
+log /dev/null
+status /dev/null
+
+explicit-exit-notify 1" >> /etc/openvpn/server.conf
+
+echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.d/20-openvpn.conf
+
+sysctl --system
+
+sed -i "/DEFAULT_FORWARD_POLICY.*/c\DEFAULT_FORWARD_POLICY=\"ACCEPT\"" /etc/default/ufw
+
+echo "
+*nat
+:POSTROUTING ACCEPT [0:0]
+
+-A POSTROUTING -s $OPENVPN_VIRTUAL_SUBNET -o $DEFAULT_INTERFACE -j MASQUERADE
+
+COMMIT" >> /etc/ufw/before.rules
+
+ufw allow ssh
+
+ufw allow 1194/udp
+
+ufw --force enable
+
+systemctl start openvpn@server
+
+systemctl enable openvpn@server
+
+./easyrsa build-client-full client nopass
+
+mv pki/issued/client.crt pki/private/client.key /etc/openvpn
+
+cat /etc/openvpn/client.conf \
+    <(echo -e '<ca>') \
+    /etc/openvpn/ca.crt \
+    <(echo -e '</ca>\n<cert>') \
+    /etc/openvpn/client.crt \
+    <(echo -e '</cert>\n<key>') \
+    /etc/openvpn/client.key \
+    <(echo -e '</key>\n<tls-crypt>') \
+    /etc/openvpn/ta.key \
+    <(echo -e '</tls-crypt>') \
+    > /tmp/openvpn/client.ovpn
+
+sed -i "1s/^/remote $OPENVPN_PUBLIC_IP 1194\n/" /tmp/openvpn/client.ovpn

@@ -1,0 +1,5 @@
+*.pem
+*.ovpn
+*.tfstate
+*.tfstate.*
+**/.terraform/*

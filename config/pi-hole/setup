@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Parse arguments
+while getopts ':i:d:' opt
+do
+  case "$opt" in
+    i) IPV4_ADDRESS=$OPTARG ;;
+    d) DOMAIN_NAME_SERVERS=$OPTARG ;;
+    *) echo "Usage: $0 [-i] [-d]" 1>&2
+       exit 1 ;;
+  esac
+done
+
+# Path to Pi-hole
+PIHOLE_PATH='/etc/pihole'
+
+# Get default network interface
+DEFAULT_INTERFACE=$(route | grep '^default' | grep -o '[^ ]*$')
+
+# Check if we're running as root
+root_check () {
+  if [[ $EUID -ne 0 ]]; then
+    echo 'This script must be run as root' 1>&2
+    exit 1
+  fi
+}
+
+# Export configuration options to file
+set_config_options () {
+  mkdir -p $PIHOLE_PATH
+
+  cat /tmp/pi-hole/setupVars.conf > "$PIHOLE_PATH/setupVars.conf"
+
+  IFS=',' read -ra servers <<< "$DOMAIN_NAME_SERVERS"
+  for index in "${!servers[@]}"; do
+    echo "PIHOLE_DNS_$((index+1))=${servers[index]}" >> "$PIHOLE_PATH/setupVars.conf"
+  done
+
+  {
+    echo "IPV4_ADDRESS=$IPV4_ADDRESS"
+    echo "PIHOLE_INTERFACE=$DEFAULT_INTERFACE"
+    echo "API_EXCLUDE_DOMAINS=ip-${IPV4_ADDRESS//./-}"
+  } >> "$PIHOLE_PATH/setupVars.conf"
+}
+
+# Download and install Pi-hole
+install_pihole () {
+  apt-get update && curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended
+}
+
+root_check
+set_config_options
+install_pihole

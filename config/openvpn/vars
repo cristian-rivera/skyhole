@@ -1,0 +1,5 @@
+set_var EASYRSA_ALGO ec
+set_var EASYRSA_BATCH 1
+set_var EASYRSA_CRL_DAYS 3650
+set_var EASYRSA_CURVE secp521r1
+set_var EASYRSA_DIGEST "sha512"
