@@ -15,8 +15,10 @@ $ export AWS_SECRET_ACCESS_KEY=""
 
 Run Terraform:
 
+This project supports the Terraform versions starting to [0.12](https://www.terraform.io/downloads.html). 
+
 ```bash
-$ terraform apply
+$ terraform init && terraform apply
 ```
 
 Once Terraform has successfully applied the configuration, a `client.ovpn` file will appear in this directory. Import this file to any OpenVPN client. That's it.
