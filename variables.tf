@@ -40,7 +40,7 @@ variable "pi-hole_private_ip" {
 }
 
 variable "pi-hole_instance_type" {
-  default = "t3.micro"
+  default = "t3.nano"
 }
 
 variable "pi-hole_ami" {
